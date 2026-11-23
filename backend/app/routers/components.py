@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,8 @@ from app.models import Component, Ride, User
 from app.schemas import (
     ComponentCreate,
     ComponentOut,
+    ComponentReplace,
+    ComponentReplaceOut,
     ComponentUpdate,
     MileageOut,
 )
@@ -95,6 +97,60 @@ def retire_component(
     db.commit()
     db.refresh(component)
     return component
+
+
+def _as_aware(value: datetime) -> datetime:
+    # A timestamp without a timezone is stored by Postgres as server time,
+    # which is UTC here, so compare it as UTC too.
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def build_new_component(bike_id: int, data: ComponentCreate) -> Component:
+    """Separate so tests can make the second write fail after the first."""
+    return Component(bike_id=bike_id, **data.model_dump())
+
+
+@router.post(
+    "/components/{component_id}/replace",
+    response_model=ComponentReplaceOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def replace_component(
+    component_id: int,
+    body: ComponentReplace,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ComponentReplaceOut:
+    old = get_own_component(db, user, component_id)
+    # Lock the row so two concurrent replaces can't both see it as active.
+    db.refresh(old, with_for_update=True)
+    if old.retired_at is not None:
+        raise HTTPException(status_code=422, detail="Component is already retired")
+    bike = get_active_bike(db, user, old.bike_id)
+    if _as_aware(body.new.installed_at) < old.installed_at:
+        raise HTTPException(
+            status_code=422,
+            detail="New component can't be installed before the old one was",
+        )
+
+    # One transaction: nothing is committed until both writes succeed.
+    try:
+        old.retired_at = body.new.installed_at
+        old.retired_odometer_km = body.old_final_odometer_km
+        db.flush()
+        new = build_new_component(bike.id, body.new)
+        db.add(new)
+        db.flush()
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(old)
+    db.refresh(new)
+    return ComponentReplaceOut(
+        old=ComponentOut.model_validate(old), new=ComponentOut.model_validate(new)
+    )
 
 
 @router.get("/components/{component_id}/mileage", response_model=MileageOut)

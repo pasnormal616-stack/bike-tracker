@@ -1,14 +1,159 @@
-import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { getComponent, getMileage, getWear, retireComponent } from '../api'
-import type { Component, Mileage, Wear } from '../types'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import {
+  getComponent,
+  getMileage,
+  getWear,
+  replaceComponent,
+  retireComponent,
+} from '../api'
+import type { Component, ComponentReplaceResult, Mileage, Wear } from '../types'
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString()
 }
 
+// Same conventions as the add-component form on BikePage: a date input is
+// sent as local midnight in ISO form.
+function dateToIso(date: string): string {
+  return new Date(`${date}T00:00:00`).toISOString()
+}
+
+function today(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+// Mounted only while open, so its fields start from the current component.
+function ReplaceForm({
+  component,
+  onCancel,
+  onReplaced,
+}: {
+  component: Component
+  onCancel: () => void
+  onReplaced: (result: ComponentReplaceResult) => void
+}) {
+  const [finalOdometer, setFinalOdometer] = useState('')
+  const [type, setType] = useState(component.type)
+  const [brand, setBrand] = useState('')
+  const [model, setModel] = useState('')
+  const [installedDate, setInstalledDate] = useState(today)
+  const [installedOdometer, setInstalledOdometer] = useState('')
+  const [odometerEdited, setOdometerEdited] = useState(false)
+  const [lifespan, setLifespan] = useState(component.lifespan_km ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      const result = await replaceComponent(component.id, {
+        old_final_odometer_km: finalOdometer,
+        new: {
+          type: type.trim(),
+          brand: brand.trim() || null,
+          model: model.trim() || null,
+          installed_at: dateToIso(installedDate),
+          installed_odometer_km: installedOdometer,
+          lifespan_km: lifespan || null,
+        },
+      })
+      onReplaced(result)
+    } catch (e) {
+      setError((e as Error).message)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="stacked" onSubmit={submit}>
+      <h2>Replace {component.type}</h2>
+      <label>
+        Old part's final odometer (km)
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={finalOdometer}
+          onChange={(e) => {
+            setFinalOdometer(e.target.value)
+            // Usually the new part goes on at the same reading.
+            if (!odometerEdited) setInstalledOdometer(e.target.value)
+          }}
+          required
+        />
+      </label>
+      <label>
+        New part type
+        <input
+          value={type}
+          onChange={(e) => setType(e.target.value)}
+          required
+          maxLength={50}
+        />
+      </label>
+      <label>
+        Brand
+        <input value={brand} onChange={(e) => setBrand(e.target.value)} maxLength={100} />
+      </label>
+      <label>
+        Model
+        <input value={model} onChange={(e) => setModel(e.target.value)} maxLength={100} />
+      </label>
+      <label>
+        Installed on
+        <input
+          type="date"
+          value={installedDate}
+          onChange={(e) => setInstalledDate(e.target.value)}
+          required
+        />
+      </label>
+      <label>
+        Installed odometer (km)
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={installedOdometer}
+          onChange={(e) => {
+            setInstalledOdometer(e.target.value)
+            setOdometerEdited(true)
+          }}
+          required
+        />
+      </label>
+      <label>
+        Lifespan (km, optional)
+        <input
+          type="number"
+          min="0.01"
+          step="0.01"
+          value={lifespan}
+          onChange={(e) => setLifespan(e.target.value)}
+        />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Replacing…' : 'Replace'}
+        </button>{' '}
+        <button type="button" onClick={onCancel} disabled={saving}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
 export default function ComponentPage() {
   const componentId = Number(useParams().componentId)
+  const navigate = useNavigate()
+  const [replacing, setReplacing] = useState(false)
 
   const [component, setComponent] = useState<Component | null>(null)
   const [mileage, setMileage] = useState<Mileage | null>(null)
@@ -78,7 +223,11 @@ export default function ComponentPage() {
         <dt>Lifespan</dt>
         <dd>{component.lifespan_km ? `${component.lifespan_km} km` : '—'}</dd>
         <dt>Retired</dt>
-        <dd>{component.retired_at ? formatDate(component.retired_at) : '—'}</dd>
+        <dd>
+          {component.retired_at ? formatDate(component.retired_at) : '—'}
+          {component.retired_odometer_km !== null &&
+            ` at ${component.retired_odometer_km} km`}
+        </dd>
         <dt>Mileage</dt>
         <dd>{mileage.distance_km} km</dd>
       </dl>
@@ -115,10 +264,25 @@ export default function ComponentPage() {
         </strong>
       </p>
 
-      {!retired && (
-        <button type="button" onClick={retire}>
-          Retire component
-        </button>
+      {!retired && !replacing && (
+        <p>
+          <button type="button" onClick={() => setReplacing(true)}>
+            Replace
+          </button>{' '}
+          <button type="button" onClick={retire}>
+            Retire component
+          </button>
+        </p>
+      )}
+      {!retired && replacing && (
+        <ReplaceForm
+          component={component}
+          onCancel={() => setReplacing(false)}
+          onReplaced={(result) => {
+            setReplacing(false)
+            navigate(`/components/${result.new.id}`)
+          }}
+        />
       )}
     </section>
   )

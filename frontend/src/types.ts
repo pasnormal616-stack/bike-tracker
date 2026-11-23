@@ -1,14 +1,28 @@
 // Decimal columns arrive from the API as JSON strings (e.g. "1200.50"),
 // so they are typed as string here to avoid losing precision.
 
-export interface Bike {
+export interface BikeDetails {
+  frame_type: string | null
+  frame_size: string | null
+  /** "YYYY-MM-DD" */
+  purchase_date: string | null
+  purchase_price: string | null
+}
+
+export interface Bike extends BikeDetails {
   id: number
   name: string
   created_at: string
   archived_at: string | null
 }
 
-export interface Component {
+// Intervals are stored and returned, but not yet used for health status.
+export interface ComponentIntervals {
+  refill_interval_days: number | null
+  check_interval_km: string | null
+}
+
+export interface Component extends ComponentIntervals {
   id: number
   bike_id: number
   type: string
@@ -18,15 +32,27 @@ export interface Component {
   installed_odometer_km: string
   lifespan_km: string | null
   retired_at: string | null
+  /** Set only by POST /components/{id}/replace. */
+  retired_odometer_km: string | null
 }
 
-export interface ComponentCreate {
+export interface ComponentCreate extends Partial<ComponentIntervals> {
   type: string
   installed_at: string
   installed_odometer_km: string
   brand?: string | null
   model?: string | null
   lifespan_km?: string | null
+}
+
+export interface ComponentReplace {
+  old_final_odometer_km: string
+  new: ComponentCreate
+}
+
+export interface ComponentReplaceResult {
+  old: Component
+  new: Component
 }
 
 export interface Mileage {

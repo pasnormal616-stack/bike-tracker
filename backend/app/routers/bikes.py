@@ -27,7 +27,7 @@ def create_bike(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Bike:
-    bike = Bike(user_id=user.id, name=body.name)
+    bike = Bike(user_id=user.id, **body.model_dump())
     db.add(bike)
     db.commit()
     db.refresh(bike)
@@ -143,8 +143,12 @@ def update_bike(
     user: User = Depends(get_current_user),
 ) -> Bike:
     bike = get_active_bike(db, user, bike_id)
-    if body.name is not None:
-        bike.name = body.name
+    # Only fields sent in the request change; an explicit null clears a detail.
+    # name can't be cleared, so a null name is ignored, as before.
+    for field, value in body.model_dump(exclude_unset=True).items():
+        if field == "name" and value is None:
+            continue
+        setattr(bike, field, value)
     db.commit()
     db.refresh(bike)
     return bike

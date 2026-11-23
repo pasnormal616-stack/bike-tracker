@@ -1,11 +1,13 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     UniqueConstraint,
@@ -30,6 +32,12 @@ class User(Base):
 
 class Bike(Base):
     __tablename__ = "bikes"
+    __table_args__ = (
+        CheckConstraint(
+            "purchase_price IS NULL OR purchase_price >= 0",
+            name="purchase_price_non_negative",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -38,6 +46,10 @@ class Bike(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    frame_type: Mapped[str | None] = mapped_column(String(40))
+    frame_size: Mapped[str | None] = mapped_column(String(20))
+    purchase_date: Mapped[date | None] = mapped_column(Date)
+    purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
     user: Mapped[User] = relationship(back_populates="bikes")
     components: Mapped[list["Component"]] = relationship(back_populates="bike")
@@ -50,6 +62,18 @@ class Component(Base):
         CheckConstraint(
             "lifespan_km IS NULL OR lifespan_km > 0", name="lifespan_km_positive"
         ),
+        CheckConstraint(
+            "refill_interval_days IS NULL OR refill_interval_days > 0",
+            name="refill_interval_days_positive",
+        ),
+        CheckConstraint(
+            "check_interval_km IS NULL OR check_interval_km > 0",
+            name="check_interval_km_positive",
+        ),
+        CheckConstraint(
+            "retired_odometer_km IS NULL OR retired_odometer_km >= 0",
+            name="retired_odometer_km_non_negative",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -61,6 +85,10 @@ class Component(Base):
     installed_odometer_km: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     lifespan_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Stored and returned only; not yet used for health status.
+    refill_interval_days: Mapped[int | None] = mapped_column(Integer)
+    check_interval_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    retired_odometer_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
     bike: Mapped[Bike] = relationship(back_populates="components")
 

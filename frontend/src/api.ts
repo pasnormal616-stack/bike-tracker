@@ -1,9 +1,12 @@
 import type {
   Bike,
+  BikeDetails,
   BikeEvent,
   BikeHealth,
   Component,
   ComponentCreate,
+  ComponentReplace,
+  ComponentReplaceResult,
   EventType,
   Mileage,
   Wear,
@@ -79,8 +82,11 @@ export function listBikeHealth(): Promise<BikeHealth[]> {
   return request('/bikes/summary')
 }
 
-export function createBike(name: string): Promise<Bike> {
-  return post('/bikes', { name })
+export function createBike(
+  name: string,
+  details: Partial<BikeDetails> = {},
+): Promise<Bike> {
+  return post('/bikes', { name, ...details })
 }
 
 export function getBike(bikeId: number): Promise<Bike> {
@@ -116,6 +122,13 @@ export function getWear(componentId: number): Promise<Wear> {
 
 export function retireComponent(componentId: number): Promise<Component> {
   return post(`/components/${componentId}/retire`)
+}
+
+export function replaceComponent(
+  componentId: number,
+  replacement: ComponentReplace,
+): Promise<ComponentReplaceResult> {
+  return post(`/components/${componentId}/replace`, replacement)
 }
 
 export function listEvents(

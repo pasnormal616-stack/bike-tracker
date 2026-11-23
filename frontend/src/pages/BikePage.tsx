@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { addComponent, archiveBike, getBike, listComponents } from '../api'
 import type { Bike, Component } from '../types'
@@ -7,6 +7,13 @@ import type { Bike, Component } from '../types'
 // so rides later that day count toward the component's mileage.
 function dateToIso(date: string): string {
   return new Date(`${date}T00:00:00`).toISOString()
+}
+
+// "YYYY-MM-DD" parsed as a local date; new Date("YYYY-MM-DD") would be UTC
+// and can show the previous day west of Greenwich.
+function formatPlainDate(value: string): string {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString()
 }
 
 function today(): string {
@@ -77,6 +84,13 @@ export default function BikePage() {
   }
 
   const archived = bike.archived_at !== null
+  const details: [string, string][] = []
+  if (bike.frame_type) details.push(['Type', bike.frame_type])
+  if (bike.frame_size) details.push(['Frame size', bike.frame_size])
+  if (bike.purchase_date) {
+    details.push(['Purchased', formatPlainDate(bike.purchase_date)])
+  }
+  if (bike.purchase_price !== null) details.push(['Price', bike.purchase_price])
 
   return (
     <section>
@@ -87,6 +101,16 @@ export default function BikePage() {
         {bike.name}
         {archived && <span className="badge">archived</span>}
       </h1>
+      {details.length > 0 && (
+        <dl className="details">
+          {details.map(([label, value]) => (
+            <Fragment key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      )}
       {error && <p className="error">{error}</p>}
       {!archived && (
         <button type="button" onClick={archive}>

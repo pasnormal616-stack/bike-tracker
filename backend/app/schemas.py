@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -6,12 +6,26 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from app.services.health import BikeStatus, ComponentStatus
 
+# Postgres INTEGER upper bound, so a huge value is a 422, not a database error.
+MAX_INT = 2_147_483_647
 
-class BikeCreate(BaseModel):
+
+class BikeDetails(BaseModel):
+    """Optional bike details shared by create and update. Omitted means null."""
+
+    frame_type: str | None = Field(default=None, max_length=40)
+    frame_size: str | None = Field(default=None, max_length=20)
+    purchase_date: date | None = None
+    purchase_price: Decimal | None = Field(
+        default=None, ge=0, max_digits=10, decimal_places=2
+    )
+
+
+class BikeCreate(BikeDetails):
     name: str = Field(min_length=1, max_length=120)
 
 
-class BikeUpdate(BaseModel):
+class BikeUpdate(BikeDetails):
     name: str | None = Field(default=None, min_length=1, max_length=120)
 
 
@@ -22,9 +36,24 @@ class BikeOut(BaseModel):
     name: str
     created_at: datetime
     archived_at: datetime | None
+    frame_type: str | None
+    frame_size: str | None
+    purchase_date: date | None
+    purchase_price: Decimal | None
 
 
-class ComponentCreate(BaseModel):
+class ComponentIntervals(BaseModel):
+    """Stored and returned only; not yet used for health status."""
+
+    refill_interval_days: int | None = Field(default=None, gt=0, le=MAX_INT)
+    check_interval_km: Decimal | None = Field(
+        default=None, gt=0, max_digits=10, decimal_places=2
+    )
+    # retired_odometer_km is deliberately not here: it's set only by
+    # POST /components/{id}/replace (from old_final_odometer_km).
+
+
+class ComponentCreate(ComponentIntervals):
     type: str = Field(min_length=1, max_length=50)
     brand: str | None = Field(default=None, max_length=100)
     model: str | None = Field(default=None, max_length=100)
@@ -33,7 +62,7 @@ class ComponentCreate(BaseModel):
     lifespan_km: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
 
 
-class ComponentUpdate(BaseModel):
+class ComponentUpdate(ComponentIntervals):
     brand: str | None = Field(default=None, max_length=100)
     model: str | None = Field(default=None, max_length=100)
     lifespan_km: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
@@ -51,6 +80,19 @@ class ComponentOut(BaseModel):
     installed_odometer_km: Decimal
     lifespan_km: Decimal | None
     retired_at: datetime | None
+    refill_interval_days: int | None
+    check_interval_km: Decimal | None
+    retired_odometer_km: Decimal | None
+
+
+class ComponentReplace(BaseModel):
+    old_final_odometer_km: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    new: ComponentCreate
+
+
+class ComponentReplaceOut(BaseModel):
+    old: ComponentOut
+    new: ComponentOut
 
 class RideCreate(BaseModel):
     distance_km: Decimal = Field(gt=0, max_digits=8, decimal_places=2)
