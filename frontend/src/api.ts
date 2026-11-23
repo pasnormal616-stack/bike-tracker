@@ -1,6 +1,7 @@
 import type {
   Bike,
   BikeEvent,
+  BikeHealth,
   Component,
   ComponentCreate,
   EventType,
@@ -72,6 +73,10 @@ function post<T>(path: string, body?: unknown): Promise<T> {
 
 export function listBikes(): Promise<Bike[]> {
   return request('/bikes')
+}
+
+export function listBikeHealth(): Promise<BikeHealth[]> {
+  return request('/bikes/summary')
 }
 
 export function createBike(name: string): Promise<Bike> {

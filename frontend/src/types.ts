@@ -47,6 +47,27 @@ export interface Wear {
   wear_limit_percent: string
 }
 
+export type ComponentStatus = 'overdue' | 'due_soon' | 'good' | 'no_lifespan'
+
+export type BikeStatus = ComponentStatus | 'no_components'
+
+export interface ComponentHealth {
+  component_id: number
+  type: string
+  remaining_km: string | null
+  status: ComponentStatus
+}
+
+export interface BikeHealth {
+  id: number
+  name: string
+  created_at: string
+  archived_at: string | null
+  status: BikeStatus
+  due_count: number
+  components: ComponentHealth[]
+}
+
 export type EventType = 'service' | 'measurement' | 'part_swap' | 'note'
 
 export interface BikeEvent {

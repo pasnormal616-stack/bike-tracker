@@ -1,17 +1,41 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { createBike, listBikes } from '../api'
-import type { Bike } from '../types'
+import { createBike, listBikeHealth } from '../api'
+import type { BikeHealth, BikeStatus } from '../types'
+
+const STATUS_LABELS: Record<BikeStatus, string> = {
+  overdue: 'Overdue',
+  due_soon: 'Due soon',
+  good: 'Good',
+  no_lifespan: 'No lifespan set',
+  no_components: 'No components',
+}
+
+// Inline so index.css stays unchanged. Overdue and due soon differ in both
+// colour and weight, so they stay distinguishable without colour.
+const STATUS_STYLES: Partial<Record<BikeStatus, CSSProperties>> = {
+  overdue: { color: 'var(--error)', fontWeight: 700 },
+  due_soon: { color: '#b45309', fontStyle: 'italic' },
+}
+
+function StatusLabel({ bike }: { bike: BikeHealth }) {
+  return (
+    <span style={STATUS_STYLES[bike.status] ?? { color: 'var(--muted)' }}>
+      {STATUS_LABELS[bike.status]}
+      {bike.due_count > 0 && ` · ${bike.due_count} due`}
+    </span>
+  )
+}
 
 export default function BikesPage() {
-  const [bikes, setBikes] = useState<Bike[] | null>(null)
+  const [bikes, setBikes] = useState<BikeHealth[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [reload, setReload] = useState(0)
 
   useEffect(() => {
     let ignore = false
-    listBikes()
+    listBikeHealth()
       .then((data) => {
         if (!ignore) {
           setBikes(data)
@@ -49,7 +73,8 @@ export default function BikesPage() {
           <ul>
             {bikes.map((bike) => (
               <li key={bike.id}>
-                <Link to={`/bikes/${bike.id}`}>{bike.name}</Link>
+                <Link to={`/bikes/${bike.id}`}>{bike.name}</Link> —{' '}
+                <StatusLabel bike={bike} />
               </li>
             ))}
           </ul>

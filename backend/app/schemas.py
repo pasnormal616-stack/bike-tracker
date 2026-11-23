@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from app.services.health import BikeStatus, ComponentStatus
+
 
 class BikeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -130,3 +132,20 @@ class WearOut(BaseModel):
     points: list[WearPoint]
     estimated_km_remaining: Decimal | None
     wear_limit_percent: Decimal = Decimal("0.75")
+
+
+class ComponentHealthOut(BaseModel):
+    component_id: int
+    type: str
+    remaining_km: Decimal | None
+    status: ComponentStatus
+
+
+class BikeHealthOut(BaseModel):
+    id: int
+    name: str
+    created_at: datetime
+    archived_at: datetime | None
+    status: BikeStatus
+    due_count: int
+    components: list[ComponentHealthOut]
