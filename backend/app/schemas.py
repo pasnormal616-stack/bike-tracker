@@ -1,7 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class BikeCreate(BaseModel):
@@ -69,3 +70,63 @@ class RideOut(BaseModel):
 class MileageOut(BaseModel):
     component_id: int
     distance_km: Decimal
+
+
+EventType = Literal["service", "measurement", "part_swap", "note"]
+
+
+class EventCreate(BaseModel):
+    type: EventType
+    component_id: int | None = None
+    occurred_at: AwareDatetime
+    odometer_km: Decimal | None = Field(
+        default=None, ge=0, max_digits=10, decimal_places=2
+    )
+    payload: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def check_measurement(self) -> "EventCreate":
+        if self.type != "measurement":
+            return self
+        if self.component_id is None:
+            raise ValueError("measurement events require component_id")
+        if self.odometer_km is None:
+            raise ValueError("measurement events require odometer_km")
+        wear = (self.payload or {}).get("wear_percent")
+        # bool is a subclass of int, so it has to be rejected explicitly.
+        if (
+            isinstance(wear, bool)
+            or not isinstance(wear, (int, float))
+            or not 0 <= wear <= 100
+        ):
+            raise ValueError(
+                "measurement events require payload.wear_percent, "
+                "a number from 0 to 100"
+            )
+        return self
+
+
+class EventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    bike_id: int
+    component_id: int | None
+    type: str
+    occurred_at: datetime
+    odometer_km: Decimal | None
+    payload: dict[str, Any] | None
+    created_at: datetime
+
+
+class WearPoint(BaseModel):
+    occurred_at: datetime
+    odometer_km: Decimal
+    wear_percent: Decimal
+
+
+class WearOut(BaseModel):
+    component_id: int
+    points: list[WearPoint]
+    estimated_km_remaining: Decimal | None
+    wear_limit_percent: Decimal = Decimal("0.75")

@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -82,3 +83,30 @@ class Ride(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     bike: Mapped[Bike | None] = relationship(back_populates="rides")
+
+
+class Event(Base):
+    __tablename__ = "events"
+    __table_args__ = (
+        # The naming convention in db.py expands these to ck_events_type and
+        # ck_events_odometer_non_negative.
+        CheckConstraint(
+            "type IN ('service', 'measurement', 'part_swap', 'note')", name="type"
+        ),
+        CheckConstraint(
+            "odometer_km IS NULL OR odometer_km >= 0", name="odometer_non_negative"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bike_id: Mapped[int] = mapped_column(ForeignKey("bikes.id"), index=True)
+    component_id: Mapped[int | None] = mapped_column(
+        ForeignKey("components.id"), index=True
+    )
+    type: Mapped[str] = mapped_column(String(20))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    odometer_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    payload: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
