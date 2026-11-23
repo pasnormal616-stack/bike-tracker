@@ -204,3 +204,19 @@ class BikeHealthOut(BaseModel):
     status: BikeStatus
     due_count: int
     components: list[ComponentHealthOut]
+
+
+class ReminderOut(BaseModel):
+    id: int
+    component_id: int
+    # From the component, so a page can show only its own bike's reminders.
+    bike_id: int
+    kind: Literal["sealant_refill"]
+    status: Literal["pending", "done"]
+    due_at: datetime
+    completed_at: datetime | None
+    created_at: datetime
+
+
+class ReminderSnooze(BaseModel):
+    days: int = Field(ge=1, le=30)

@@ -7,11 +7,13 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -140,3 +142,32 @@ class Event(Base):
     )
     # Soft delete, as for rides: set once, never cleared.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Reminder(Base):
+    __tablename__ = "reminders"
+    __table_args__ = (
+        # Expanded by the naming convention to ck_reminders_kind and
+        # ck_reminders_status.
+        CheckConstraint("kind IN ('sealant_refill')", name="kind"),
+        CheckConstraint("status IN ('pending', 'done')", name="status"),
+        # At most one open reminder per component and kind. The reminder job
+        # relies on this with INSERT ... ON CONFLICT DO NOTHING.
+        Index(
+            "uq_reminders_open_per_component_kind",
+            "component_id",
+            "kind",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    component_id: Mapped[int] = mapped_column(ForeignKey("components.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20))
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

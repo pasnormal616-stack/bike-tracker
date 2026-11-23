@@ -2,6 +2,7 @@ import type {
   Bike,
   BikeDetails,
   BikeEvent,
+  BikeEventCreate,
   BikeEventUpdate,
   BikeHealth,
   Component,
@@ -10,6 +11,7 @@ import type {
   ComponentReplaceResult,
   EventFilters,
   Mileage,
+  Reminder,
   Wear,
 } from './types'
 
@@ -159,4 +161,24 @@ export function updateEvent(
 
 export function deleteEvent(eventId: number): Promise<void> {
   return request(`/events/${eventId}`, { method: 'DELETE' })
+}
+
+export function createEvent(
+  bikeId: number,
+  event: BikeEventCreate,
+): Promise<BikeEvent> {
+  return post(`/bikes/${bikeId}/events`, event)
+}
+
+/** The user's pending reminders across all bikes, soonest first. */
+export function listReminders(): Promise<Reminder[]> {
+  return request('/reminders')
+}
+
+export function completeReminder(reminderId: number): Promise<Reminder> {
+  return post(`/reminders/${reminderId}/complete`)
+}
+
+export function snoozeReminder(reminderId: number, days: number): Promise<Reminder> {
+  return post(`/reminders/${reminderId}/snooze`, { days })
 }

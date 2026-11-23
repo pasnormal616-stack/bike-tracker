@@ -3,13 +3,24 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   addComponent,
   archiveBike,
+  completeReminder,
+  createEvent,
   deleteEvent,
   getBike,
   listComponents,
   listEvents,
+  listReminders,
+  snoozeReminder,
   updateEvent,
 } from '../api'
-import type { Bike, BikeEvent, BikeEventUpdate, Component, EventType } from '../types'
+import type {
+  Bike,
+  BikeEvent,
+  BikeEventUpdate,
+  Component,
+  EventType,
+  Reminder,
+} from '../types'
 
 // A date input gives "YYYY-MM-DD"; store it as local midnight in ISO form,
 // so rides later that day count toward the component's mileage.
@@ -38,6 +49,9 @@ export default function BikePage() {
   const [components, setComponents] = useState<Component[]>([])
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
+  // Bumped when completing a reminder adds a service event, so the event
+  // list reloads.
+  const [eventsVersion, setEventsVersion] = useState(0)
 
   const [type, setType] = useState('')
   const [installedDate, setInstalledDate] = useState(today)
@@ -109,6 +123,11 @@ export default function BikePage() {
         {bike.name}
         {archived && <span className="badge">archived</span>}
       </h1>
+      <RemindersSection
+        bikeId={bikeId}
+        components={components}
+        onCompleted={() => setEventsVersion((n) => n + 1)}
+      />
       {details.length > 0 && (
         <dl className="details">
           {details.map(([label, value]) => (
@@ -183,7 +202,12 @@ export default function BikePage() {
         </>
       )}
 
-      <EventsSection bikeId={bikeId} components={components} />
+      <EventsSection
+        bikeId={bikeId}
+        components={components}
+        archived={archived}
+        version={eventsVersion}
+      />
     </section>
   )
 }
@@ -218,9 +242,13 @@ function describePayload(payload: BikeEvent['payload']): string {
 function EventsSection({
   bikeId,
   components,
+  archived,
+  version,
 }: {
   bikeId: number
   components: Component[]
+  archived: boolean
+  version: number
 }) {
   const [events, setEvents] = useState<BikeEvent[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -250,7 +278,7 @@ function EventsSection({
     return () => {
       ignore = true
     }
-  }, [bikeId, type, fromDate, toDate, reload])
+  }, [bikeId, type, fromDate, toDate, reload, version])
 
   async function remove(event: BikeEvent) {
     const label = EVENT_TYPE_LABELS[event.type].toLowerCase()
@@ -272,6 +300,14 @@ function EventsSection({
   return (
     <>
       <h2>Events</h2>
+      {/* The API rejects new events on archived bikes, so the form is hidden. */}
+      {!archived && (
+        <AddEventForm
+          bikeId={bikeId}
+          components={components}
+          onAdded={() => setReload((n) => n + 1)}
+        />
+      )}
       <div className="filters">
         <label>
           Type{' '}
@@ -467,5 +503,219 @@ function EventEditForm({
         </button>
       </div>
     </form>
+  )
+}
+
+function nowLocalInput(): string {
+  return isoToLocalInput(new Date().toISOString())
+}
+
+function AddEventForm({
+  bikeId,
+  components,
+  onAdded,
+}: {
+  bikeId: number
+  components: Component[]
+  onAdded: () => void
+}) {
+  const [type, setType] = useState<EventType>('service')
+  const [when, setWhen] = useState(nowLocalInput)
+  const [componentId, setComponentId] = useState('')
+  const [odometer, setOdometer] = useState('')
+  const [wear, setWear] = useState('')
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    const payload: Record<string, unknown> = {}
+    if (note.trim()) payload.note = note.trim()
+    if (type === 'measurement' && wear !== '') payload.wear_percent = Number(wear)
+
+    setSaving(true)
+    setError(null)
+    try {
+      await createEvent(bikeId, {
+        type,
+        occurred_at: new Date(when).toISOString(),
+        component_id: componentId === '' ? null : Number(componentId),
+        odometer_km: odometer === '' ? null : odometer,
+        payload: Object.keys(payload).length > 0 ? payload : null,
+      })
+      // Keep the type and component for the next entry; clear the rest.
+      setWhen(nowLocalInput())
+      setOdometer('')
+      setWear('')
+      setNote('')
+      onAdded()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="stacked" onSubmit={submit}>
+      <h3>Add event</h3>
+      <label>
+        Type
+        <select value={type} onChange={(e) => setType(e.target.value as EventType)}>
+          {EVENT_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {EVENT_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        When
+        <input
+          type="datetime-local"
+          value={when}
+          onChange={(e) => setWhen(e.target.value)}
+          required
+        />
+      </label>
+      <label>
+        Component (optional)
+        <select value={componentId} onChange={(e) => setComponentId(e.target.value)}>
+          <option value="">None</option>
+          {components.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.type}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Odometer (km, optional)
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={odometer}
+          onChange={(e) => setOdometer(e.target.value)}
+        />
+      </label>
+      {type === 'measurement' && (
+        <label>
+          Wear (%)
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="any"
+            value={wear}
+            onChange={(e) => setWear(e.target.value)}
+          />
+        </label>
+      )}
+      <label>
+        Note
+        <input value={note} onChange={(e) => setNote(e.target.value)} />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Adding…' : 'Add event'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+const REMINDER_LABELS: Record<Reminder['kind'], string> = {
+  sealant_refill: 'Sealant refill',
+}
+
+function RemindersSection({
+  bikeId,
+  components,
+  onCompleted,
+}: {
+  bikeId: number
+  components: Component[]
+  onCompleted: () => void
+}) {
+  const [reminders, setReminders] = useState<Reminder[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    let ignore = false
+    listReminders()
+      .then((data) => {
+        if (!ignore) {
+          // The API returns all of the user's reminders; keep this bike's.
+          setReminders(data.filter((r) => r.bike_id === bikeId))
+          setError(null)
+        }
+      })
+      .catch((e: Error) => {
+        if (!ignore) setError(e.message)
+      })
+    return () => {
+      ignore = true
+    }
+  }, [bikeId, reload])
+
+  async function complete(reminder: Reminder) {
+    try {
+      await completeReminder(reminder.id)
+      setReload((n) => n + 1)
+      onCompleted()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  async function snooze(reminder: Reminder) {
+    const answer = window.prompt('Snooze for how many days? (1–30)', '7')
+    if (answer === null) return
+    const days = Number(answer.trim())
+    if (!Number.isInteger(days)) {
+      setError('Enter a whole number of days from 1 to 30.')
+      return
+    }
+    try {
+      // The API enforces the 1–30 range and its message is shown on failure.
+      await snoozeReminder(reminder.id, days)
+      setReload((n) => n + 1)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  const componentName = (id: number) =>
+    components.find((c) => c.id === id)?.type ?? `component #${id}`
+
+  if (reminders.length === 0 && !error) return null
+
+  return (
+    <div className="reminders">
+      <h2>Reminders</h2>
+      {error && <p className="error">{error}</p>}
+      <ul>
+        {reminders.map((r) => {
+          const overdue = new Date(r.due_at) < new Date()
+          return (
+            <li key={r.id}>
+              {REMINDER_LABELS[r.kind]} ({componentName(r.component_id)}) — due{' '}
+              {new Date(r.due_at).toLocaleDateString()}
+              {overdue && <strong> (overdue)</strong>}{' '}
+              <button type="button" onClick={() => complete(r)}>
+                Complete
+              </button>{' '}
+              <button type="button" onClick={() => snooze(r)}>
+                Snooze
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }

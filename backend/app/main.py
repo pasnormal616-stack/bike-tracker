@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.db import engine
-from app.routers import bikes, components, events, rides
+from app.routers import bikes, components, events, reminders, rides
 
 app = FastAPI(title="Bike Tracker")
 
@@ -18,6 +18,7 @@ app.include_router(bikes.router)
 app.include_router(components.router)
 app.include_router(rides.router)
 app.include_router(events.router)
+app.include_router(reminders.router)
 
 
 @app.get("/health")

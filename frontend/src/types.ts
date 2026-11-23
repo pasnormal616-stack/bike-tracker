@@ -107,6 +107,15 @@ export interface BikeEvent {
   created_at: string
 }
 
+/** POST /bikes/{id}/events. occurred_at must include a timezone. */
+export interface BikeEventCreate {
+  type: EventType
+  occurred_at: string
+  component_id?: number | null
+  odometer_km?: string | null
+  payload?: Record<string, unknown> | null
+}
+
 /** PATCH /events/{id}: omitted fields keep their value; null clears one. */
 export interface BikeEventUpdate {
   type?: EventType
@@ -122,4 +131,15 @@ export interface EventFilters {
   /** Timezone-aware ISO timestamps; both bounds are inclusive. */
   from?: string
   to?: string
+}
+
+export interface Reminder {
+  id: number
+  component_id: number
+  bike_id: number
+  kind: 'sealant_refill'
+  status: 'pending' | 'done'
+  due_at: string
+  completed_at: string | null
+  created_at: string
 }

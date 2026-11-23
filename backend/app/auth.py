@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Bike, Component, Event, Ride, User
+from app.models import Bike, Component, Event, Reminder, Ride, User
 
 
 def get_current_user(
@@ -68,3 +68,16 @@ def get_own_event(
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return event
+
+
+def get_own_reminder(db: Session, user: User, reminder_id: int) -> Reminder:
+    """The user's reminder, checked through its component's bike, or 404."""
+    reminder = db.scalar(
+        select(Reminder)
+        .join(Component, Reminder.component_id == Component.id)
+        .join(Bike, Component.bike_id == Bike.id)
+        .where(Reminder.id == reminder_id, Bike.user_id == user.id)
+    )
+    if reminder is None:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    return reminder
