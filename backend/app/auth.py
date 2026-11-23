@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Bike, Component, User
+from app.models import Bike, Component, Ride, User
 
 
 def get_current_user(
@@ -39,3 +39,14 @@ def get_own_component(db: Session, user: User, component_id: int) -> Component:
     if component is None:
         raise HTTPException(status_code=404, detail="Component not found")
     return component
+
+
+def get_own_ride(db: Session, user: User, ride_id: int) -> Ride:
+    ride = db.scalar(
+        select(Ride)
+        .join(Bike, Ride.bike_id == Bike.id)
+        .where(Ride.id == ride_id, Bike.user_id == user.id)
+    )
+    if ride is None:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    return ride

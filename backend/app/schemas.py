@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class BikeCreate(BaseModel):
@@ -48,3 +48,24 @@ class ComponentOut(BaseModel):
     installed_odometer_km: Decimal
     lifespan_km: Decimal | None
     retired_at: datetime | None
+
+class RideCreate(BaseModel):
+    distance_km: Decimal = Field(gt=0, max_digits=8, decimal_places=2)
+    started_at: AwareDatetime
+
+
+class RideOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    bike_id: int | None
+    source: str
+    external_id: str | None
+    distance_km: Decimal
+    started_at: datetime
+    deleted_at: datetime | None
+
+
+class MileageOut(BaseModel):
+    component_id: int
+    distance_km: Decimal

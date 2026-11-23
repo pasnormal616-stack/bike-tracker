@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -11,8 +11,13 @@ from app.auth import (
     get_own_component,
 )
 from app.db import get_db
-from app.models import Component, User
-from app.schemas import ComponentCreate, ComponentOut, ComponentUpdate
+from app.models import Component, Ride, User
+from app.schemas import (
+    ComponentCreate,
+    ComponentOut,
+    ComponentUpdate,
+    MileageOut,
+)
 
 router = APIRouter(tags=["components"])
 
@@ -80,3 +85,23 @@ def retire_component(
     db.commit()
     db.refresh(component)
     return component
+
+
+@router.get("/components/{component_id}/mileage", response_model=MileageOut)
+def get_component_mileage(
+    component_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> MileageOut:
+    component = get_own_component(db, user, component_id)
+    conditions = [
+        Ride.bike_id == component.bike_id,
+        Ride.deleted_at.is_(None),
+        Ride.started_at >= component.installed_at,
+    ]
+    if component.retired_at is not None:
+        conditions.append(Ride.started_at < component.retired_at)
+    distance = db.scalar(
+        select(func.coalesce(func.sum(Ride.distance_km), 0)).where(*conditions)
+    )
+    return MileageOut(component_id=component.id, distance_km=distance)
