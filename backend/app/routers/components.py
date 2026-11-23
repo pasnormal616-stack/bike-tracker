@@ -58,6 +58,16 @@ def list_components(
     )
 
 
+@router.get("/components/{component_id}", response_model=ComponentOut)
+def get_component(
+    component_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Component:
+    # Returns retired components too, so their detail page still loads.
+    return get_own_component(db, user, component_id)
+
+
 @router.patch("/components/{component_id}", response_model=ComponentOut)
 def update_component(
     component_id: int,
