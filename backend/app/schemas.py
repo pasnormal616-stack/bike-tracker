@@ -150,6 +150,19 @@ class EventCreate(BaseModel):
         return self
 
 
+class EventUpdate(BaseModel):
+    """PATCH body: the create fields, all optional. Omitted fields keep their
+    value; the merged result is validated as an EventCreate in the route."""
+
+    type: EventType | None = None
+    component_id: int | None = None
+    occurred_at: AwareDatetime | None = None
+    odometer_km: Decimal | None = Field(
+        default=None, ge=0, max_digits=10, decimal_places=2
+    )
+    payload: dict[str, Any] | None = None
+
+
 class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

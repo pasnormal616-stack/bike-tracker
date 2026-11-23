@@ -138,3 +138,5 @@ class Event(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Soft delete, as for rides: set once, never cleared.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

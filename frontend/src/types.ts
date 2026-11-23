@@ -106,3 +106,20 @@ export interface BikeEvent {
   payload: Record<string, unknown> | null
   created_at: string
 }
+
+/** PATCH /events/{id}: omitted fields keep their value; null clears one. */
+export interface BikeEventUpdate {
+  type?: EventType
+  component_id?: number | null
+  occurred_at?: string
+  odometer_km?: string | null
+  payload?: Record<string, unknown> | null
+}
+
+export interface EventFilters {
+  type?: EventType
+  componentId?: number
+  /** Timezone-aware ISO timestamps; both bounds are inclusive. */
+  from?: string
+  to?: string
+}

@@ -2,12 +2,13 @@ import type {
   Bike,
   BikeDetails,
   BikeEvent,
+  BikeEventUpdate,
   BikeHealth,
   Component,
   ComponentCreate,
   ComponentReplace,
   ComponentReplaceResult,
-  EventType,
+  EventFilters,
   Mileage,
   Wear,
 } from './types'
@@ -133,13 +134,29 @@ export function replaceComponent(
 
 export function listEvents(
   bikeId: number,
-  filters: { type?: EventType; componentId?: number } = {},
+  filters: EventFilters = {},
 ): Promise<BikeEvent[]> {
   const params = new URLSearchParams()
   if (filters.type) params.set('type', filters.type)
   if (filters.componentId !== undefined) {
     params.set('component_id', String(filters.componentId))
   }
+  if (filters.from) params.set('from', filters.from)
+  if (filters.to) params.set('to', filters.to)
   const query = params.toString()
   return request(`/bikes/${bikeId}/events${query ? `?${query}` : ''}`)
+}
+
+export function updateEvent(
+  eventId: number,
+  changes: BikeEventUpdate,
+): Promise<BikeEvent> {
+  return request(`/events/${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(changes),
+  })
+}
+
+export function deleteEvent(eventId: number): Promise<void> {
+  return request(`/events/${eventId}`, { method: 'DELETE' })
 }

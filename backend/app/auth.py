@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Bike, Component, Ride, User
+from app.models import Bike, Component, Event, Ride, User
 
 
 def get_current_user(
@@ -50,3 +50,21 @@ def get_own_ride(db: Session, user: User, ride_id: int) -> Ride:
     if ride is None:
         raise HTTPException(status_code=404, detail="Ride not found")
     return ride
+
+
+def get_own_event(
+    db: Session, user: User, event_id: int, *, include_deleted: bool = False
+) -> Event:
+    """The user's event, or 404. Deleted events are 404 unless include_deleted,
+    which DELETE uses so a second delete still finds the event and returns 204."""
+    query = (
+        select(Event)
+        .join(Bike, Event.bike_id == Bike.id)
+        .where(Event.id == event_id, Bike.user_id == user.id)
+    )
+    if not include_deleted:
+        query = query.where(Event.deleted_at.is_(None))
+    event = db.scalar(query)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
