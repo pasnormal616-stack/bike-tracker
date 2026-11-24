@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { createBike, listBikeHealth } from '../api'
+import PrivacySection from '../PrivacySection'
 import type { BikeHealth, BikeStatus } from '../types'
 
 const STATUS_LABELS: Record<BikeStatus, string> = {
@@ -27,7 +28,9 @@ function StatusLabel({ bike }: { bike: BikeHealth }) {
   )
 }
 
-export default function BikesPage() {
+/** onAccountDeleted runs after the account is deleted and the saved user
+ * id is removed; App clears the top bar and shows the message. */
+export default function BikesPage({ onAccountDeleted }: { onAccountDeleted: () => void }) {
   const [bikes, setBikes] = useState<BikeHealth[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState('')
@@ -93,6 +96,8 @@ export default function BikesPage() {
         </label>{' '}
         <button type="submit">Add</button>
       </form>
+
+      <PrivacySection onDeleted={onAccountDeleted} />
     </section>
   )
 }

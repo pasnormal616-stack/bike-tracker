@@ -177,3 +177,50 @@ export interface Reminder {
   completed_at: string | null
   created_at: string
 }
+
+/** One torque value. deleted_at is set once a newer value replaced it. */
+export interface TorqueValue {
+  id: number
+  /** Decimal string, e.g. "5.50". */
+  torque_nm: string
+  created_at: string
+  deleted_at: string | null
+}
+
+/** GET /components/{id}/torque: one entry per bolt. */
+export interface BoltTorque {
+  bolt: string
+  current: TorqueValue
+  /** Every value for the bolt, current included, newest first. */
+  history: TorqueValue[]
+}
+
+export interface SetupLog {
+  id: number
+  bike_id: number
+  name: string
+  created_at: string
+}
+
+export interface SetupChange {
+  id: number
+  setup_log_id: number
+  field: string
+  old_value: string | null
+  new_value: string | null
+  changed_at: string
+}
+
+export interface SetupChangeCreate {
+  field: string
+  old_value: string | null
+  new_value: string | null
+}
+
+/** GET /setups/{id}: the log with one page of changes, oldest first. */
+export interface SetupLogDetail extends SetupLog {
+  changes: SetupChange[]
+  total_changes: number
+  limit: number
+  offset: number
+}

@@ -1,8 +1,15 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from app.services.health import BikeStatus, ComponentStatus
 from app.services.wear import CHAIN_DEFAULTS
@@ -289,3 +296,201 @@ class ReminderOut(BaseModel):
 
 class ReminderSnooze(BaseModel):
     days: int = Field(ge=1, le=30)
+
+
+# --- Step 13: torque specs ---------------------------------------------------
+
+# Surrounding spaces are trimmed before the length check, so "  " is too short.
+Bolt = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+
+
+class TorqueCreate(BaseModel):
+    bolt: Bolt
+    torque_nm: Decimal = Field(gt=0, max_digits=6, decimal_places=2)
+
+
+class TorqueValueOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    torque_nm: Decimal
+    created_at: datetime
+    # Set when a newer value replaced this one; null for the current value.
+    deleted_at: datetime | None
+
+
+class BoltTorqueOut(BaseModel):
+    bolt: str
+    current: TorqueValueOut
+    # Every value for this bolt, current included, newest first.
+    history: list[TorqueValueOut]
+
+
+# --- Step 13: setup logs -----------------------------------------------------
+
+SetupName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+SetupField = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+
+
+class SetupLogCreate(BaseModel):
+    name: SetupName
+
+
+class SetupLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    bike_id: int
+    name: str
+    created_at: datetime
+
+
+class SetupChangeCreate(BaseModel):
+    """changed_at is set by the server to the time the change is recorded."""
+
+    field: SetupField
+    old_value: str | None = Field(default=None, max_length=500)
+    new_value: str | None = Field(default=None, max_length=500)
+
+
+class SetupChangeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    setup_log_id: int
+    field: str
+    old_value: str | None
+    new_value: str | None
+    changed_at: datetime
+
+
+class SetupLogDetailOut(SetupLogOut):
+    # One page of changes, oldest first; total counts all of them.
+    changes: list[SetupChangeOut]
+    total_changes: int
+    limit: int
+    offset: int
+
+
+# --- Step 14: export and delete ------------------------------------------------
+# One row model per table, with every column, so the export is the user's
+# data as stored. Soft-deleted rows are included with their deleted_at.
+
+
+class _Row(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserRow(_Row):
+    id: int
+    email: str
+    created_at: datetime
+
+
+class BikeRow(_Row):
+    id: int
+    user_id: int
+    name: str
+    created_at: datetime
+    archived_at: datetime | None
+    frame_type: str | None
+    frame_size: str | None
+    purchase_date: date | None
+    purchase_price: Decimal | None
+
+
+class ComponentRow(_Row):
+    id: int
+    bike_id: int
+    type: str
+    brand: str | None
+    model: str | None
+    installed_at: datetime
+    installed_odometer_km: Decimal
+    lifespan_km: Decimal | None
+    retired_at: datetime | None
+    refill_interval_days: int | None
+    check_interval_km: Decimal | None
+    retired_odometer_km: Decimal | None
+    speed_count: int | None
+
+
+class RideRow(_Row):
+    id: int
+    bike_id: int | None
+    source: str
+    external_id: str | None
+    distance_km: Decimal
+    started_at: datetime
+    deleted_at: datetime | None
+
+
+class EventRow(_Row):
+    id: int
+    bike_id: int
+    component_id: int | None
+    type: str
+    occurred_at: datetime
+    odometer_km: Decimal | None
+    payload: dict[str, Any] | None
+    cost: Decimal | None
+    parts: str | None
+    created_at: datetime
+    deleted_at: datetime | None
+
+
+class ReminderRow(_Row):
+    id: int
+    component_id: int
+    kind: str
+    status: str
+    due_at: datetime
+    completed_at: datetime | None
+    created_at: datetime
+
+
+class TorqueSpecRow(_Row):
+    id: int
+    component_id: int
+    bolt: str
+    torque_nm: Decimal
+    created_at: datetime
+    deleted_at: datetime | None
+
+
+class SetupLogRow(_Row):
+    id: int
+    bike_id: int
+    name: str
+    created_at: datetime
+    deleted_at: datetime | None
+
+
+class SetupLogChangeRow(_Row):
+    id: int
+    setup_log_id: int
+    field: str
+    old_value: str | None
+    new_value: str | None
+    changed_at: datetime
+
+
+class DataExport(BaseModel):
+    exported_at: datetime
+    user: UserRow
+    bikes: list[BikeRow]
+    components: list[ComponentRow]
+    rides: list[RideRow]
+    events: list[EventRow]
+    reminders: list[ReminderRow]
+    torque_specs: list[TorqueSpecRow]
+    setup_logs: list[SetupLogRow]
+    setup_log_changes: list[SetupLogChangeRow]
+
+
+DELETE_CONFIRMATION = "DELETE MY DATA"
+
+
+class DeleteConfirm(BaseModel):
+    # Anything other than this exact text is a 422.
+    confirm: Literal["DELETE MY DATA"]

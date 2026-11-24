@@ -11,6 +11,7 @@ import {
 } from '../api'
 import { CHAIN_DEFAULTS, SPEED_COUNT_LABELS } from '../chain'
 import ChainFields from '../ChainFields'
+import TorqueSection from '../TorqueSection'
 import type {
   Bike,
   Component,
@@ -637,6 +638,9 @@ export default function ComponentPage() {
         </>
       )}
       {!retired && !archived && <ReadingForm component={component} onAdded={refreshWear} />}
+
+      {/* Retired or archived: history stays visible, the form is hidden. */}
+      <TorqueSection componentId={componentId} readOnly={archived || retired} />
 
       {!retired && !replacing && (
         <p>

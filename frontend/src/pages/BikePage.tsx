@@ -5,16 +5,19 @@ import {
   archiveBike,
   completeReminder,
   createEvent,
+  createSetupLog,
   deleteEvent,
   downloadServiceHistory,
   getBike,
   listComponents,
   listEvents,
   listReminders,
+  listSetupLogs,
   snoozeReminder,
   updateEvent,
 } from '../api'
 import { CHAIN_DEFAULTS } from '../chain'
+import { saveBlob } from '../download'
 import ChainFields from '../ChainFields'
 import type {
   Bike,
@@ -23,6 +26,7 @@ import type {
   Component,
   EventType,
   Reminder,
+  SetupLog,
   SpeedCount,
 } from '../types'
 
@@ -169,6 +173,8 @@ export default function BikePage() {
       {/* Shown for archived bikes too: their history is still useful. */}
       <ServiceHistorySection bikeId={bikeId} />
 
+      <SetupLogsSection bikeId={bikeId} archived={archived} />
+
       <h2>Components</h2>
       {components.length === 0 ? (
         <p>No active components.</p>
@@ -252,18 +258,73 @@ export default function BikePage() {
   )
 }
 
-// Saves a downloaded file through a temporary object URL. The blob was
-// fetched with the x-user-id header, so no plain link to the API is used.
-function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  // Revoked on the next tick, once the browser has started the download.
-  setTimeout(() => URL.revokeObjectURL(url), 0)
+function SetupLogsSection({ bikeId, archived }: { bikeId: number; archived: boolean }) {
+  const [logs, setLogs] = useState<SetupLog[] | null>(null)
+  const [name, setName] = useState('')
+  const [reload, setReload] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let ignore = false
+    listSetupLogs(bikeId)
+      .then((data) => {
+        if (!ignore) {
+          setLogs(data)
+          setError(null)
+        }
+      })
+      .catch((e: Error) => {
+        if (!ignore) setError(e.message)
+      })
+    return () => {
+      ignore = true
+    }
+  }, [bikeId, reload])
+
+  async function create(e: FormEvent) {
+    e.preventDefault()
+    try {
+      await createSetupLog(bikeId, name.trim())
+      setName('')
+      setReload((n) => n + 1)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  return (
+    <>
+      <h2>Setup logs</h2>
+      {error && <p className="error">{error}</p>}
+      {logs !== null &&
+        (logs.length === 0 ? (
+          <p>No setup logs yet.</p>
+        ) : (
+          <ul>
+            {logs.map((log) => (
+              <li key={log.id}>
+                <Link to={`/setups/${log.id}`}>{log.name}</Link>
+              </li>
+            ))}
+          </ul>
+        ))}
+      {!archived && (
+        <form onSubmit={create}>
+          <label>
+            New setup log{' '}
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Race setup"
+              required
+              maxLength={80}
+            />
+          </label>{' '}
+          <button type="submit">Create</button>
+        </form>
+      )}
+    </>
+  )
 }
 
 function ServiceHistorySection({ bikeId }: { bikeId: number }) {

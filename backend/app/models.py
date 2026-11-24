@@ -186,3 +186,69 @@ class Reminder(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class TorqueSpec(Base):
+    """One torque value for one bolt on a component. Changing a value inserts
+    a new row and soft-deletes the old one, so the rows for a (component, bolt)
+    pair are its history and the one with deleted_at NULL is current."""
+
+    __tablename__ = "torque_specs"
+    __table_args__ = (
+        CheckConstraint("char_length(bolt) BETWEEN 1 AND 60", name="bolt_length"),
+        CheckConstraint("torque_nm > 0", name="torque_nm_positive"),
+        # At most one current value per bolt.
+        Index(
+            "uq_torque_specs_current_per_component_bolt",
+            "component_id",
+            "bolt",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    component_id: Mapped[int] = mapped_column(ForeignKey("components.id"), index=True)
+    bolt: Mapped[str] = mapped_column(Text)
+    torque_nm: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # Set when a newer value replaces this one; never cleared.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SetupLog(Base):
+    __tablename__ = "setup_logs"
+    __table_args__ = (
+        CheckConstraint("char_length(name) BETWEEN 1 AND 80", name="name_length"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bike_id: Mapped[int] = mapped_column(ForeignKey("bikes.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # Soft delete: set once, never cleared.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SetupLogChange(Base):
+    """Append-only: the API never updates or deletes these, and a database
+    trigger (see the migration) rejects UPDATE. Rows are only deleted when the
+    whole account is deleted (POST /me/delete)."""
+
+    __tablename__ = "setup_log_changes"
+    __table_args__ = (
+        CheckConstraint("char_length(field) BETWEEN 1 AND 60", name="field_length"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    setup_log_id: Mapped[int] = mapped_column(ForeignKey("setup_logs.id"), index=True)
+    field: Mapped[str] = mapped_column(String(60))
+    old_value: Mapped[str | None] = mapped_column(Text)
+    new_value: Mapped[str | None] = mapped_column(Text)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

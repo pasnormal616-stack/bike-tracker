@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Bike, Component, Event, Reminder, Ride, User
+from app.models import Bike, Component, Event, Reminder, Ride, SetupLog, User
 
 
 def get_current_user(
@@ -81,3 +81,22 @@ def get_own_reminder(db: Session, user: User, reminder_id: int) -> Reminder:
     if reminder is None:
         raise HTTPException(status_code=404, detail="Reminder not found")
     return reminder
+
+
+def get_own_setup_log(
+    db: Session, user: User, setup_id: int, *, include_deleted: bool = False
+) -> SetupLog:
+    """The user's setup log, checked through its bike, or 404. A deleted log
+    is 404 unless include_deleted, which DELETE uses so a second delete still
+    returns 204."""
+    query = (
+        select(SetupLog)
+        .join(Bike, SetupLog.bike_id == Bike.id)
+        .where(SetupLog.id == setup_id, Bike.user_id == user.id)
+    )
+    if not include_deleted:
+        query = query.where(SetupLog.deleted_at.is_(None))
+    log = db.scalar(query)
+    if log is None:
+        raise HTTPException(status_code=404, detail="Setup log not found")
+    return log

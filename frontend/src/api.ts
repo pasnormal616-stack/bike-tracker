@@ -12,6 +12,11 @@ import type {
   EventFilters,
   Mileage,
   Reminder,
+  SetupChange,
+  SetupChangeCreate,
+  SetupLog,
+  SetupLogDetail,
+  BoltTorque,
   Wear,
 } from './types'
 
@@ -233,4 +238,63 @@ export function completeReminder(reminderId: number): Promise<Reminder> {
 
 export function snoozeReminder(reminderId: number, days: number): Promise<Reminder> {
   return post(`/reminders/${reminderId}/snooze`, { days })
+}
+
+export function listTorque(componentId: number): Promise<BoltTorque[]> {
+  return request(`/components/${componentId}/torque`)
+}
+
+/** Sets a bolt's torque. The old value is kept in the bolt's history. */
+export function setTorque(
+  componentId: number,
+  bolt: string,
+  torqueNm: string,
+): Promise<BoltTorque> {
+  return post(`/components/${componentId}/torque`, { bolt, torque_nm: torqueNm })
+}
+
+export function listSetupLogs(bikeId: number): Promise<SetupLog[]> {
+  return request(`/bikes/${bikeId}/setups`)
+}
+
+export function createSetupLog(bikeId: number, name: string): Promise<SetupLog> {
+  return post(`/bikes/${bikeId}/setups`, { name })
+}
+
+export function getSetupLog(
+  setupId: number,
+  limit = 50,
+  offset = 0,
+): Promise<SetupLogDetail> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  return request(`/setups/${setupId}?${params}`)
+}
+
+export function addSetupChange(
+  setupId: number,
+  change: SetupChangeCreate,
+): Promise<SetupChange> {
+  return post(`/setups/${setupId}/changes`, change)
+}
+
+export function deleteSetupLog(setupId: number): Promise<void> {
+  return request(`/setups/${setupId}`, { method: 'DELETE' })
+}
+
+/** GET /me/export: every row the user owns, as a JSON file. */
+export async function exportMyData(): Promise<FileDownload> {
+  const response = await send('/me/export')
+  return {
+    blob: await response.blob(),
+    filename:
+      filenameFromDisposition(response.headers.get('Content-Disposition')) ??
+      'bike-tracker-export.json',
+  }
+}
+
+export const DELETE_CONFIRMATION = 'DELETE MY DATA'
+
+/** POST /me/delete: permanently deletes the user and all their data. */
+export function deleteMyAccount(): Promise<void> {
+  return post('/me/delete', { confirm: DELETE_CONFIRMATION })
 }
