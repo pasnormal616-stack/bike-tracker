@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getBike, listBikes } from './api'
+import { downloadServiceHistory, getBike, listBikes } from './api'
 
 // Vitest runs in Node, which has no localStorage, so give each test a
 // fresh in-memory one.
@@ -61,5 +61,30 @@ describe('api client', () => {
 
     await expect(result).rejects.toThrow('404')
     await expect(result).rejects.toThrow('Bike not found')
+  })
+
+  it('downloads the service history with the header and reads the file name', async () => {
+    localStorage.setItem('userId', '42')
+    const pdfBytes = new TextEncoder().encode('%PDF-1.4 test')
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(pdfBytes, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition':
+            'attachment; filename="service-history-road-bike-2026-11-24.pdf"',
+        },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await downloadServiceHistory(7, '2026-03-01', '2026-03-31')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toMatch(/\/bikes\/7\/service-history\.pdf\?from=2026-03-01&to=2026-03-31$/)
+    expect(new Headers(init.headers).get('x-user-id')).toBe('42')
+    expect(result.filename).toBe('service-history-road-bike-2026-11-24.pdf')
+    expect(await result.blob.text()).toBe('%PDF-1.4 test')
   })
 })

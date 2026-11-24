@@ -38,7 +38,15 @@ from app.services.wear import (
 router = APIRouter(tags=["events"])
 
 # Columns a client can set; used to merge a PATCH onto the stored event.
-EVENT_FIELDS = ("type", "component_id", "occurred_at", "odometer_km", "payload")
+EVENT_FIELDS = (
+    "type",
+    "component_id",
+    "occurred_at",
+    "odometer_km",
+    "payload",
+    "cost",
+    "parts",
+)
 
 
 def validate_event_target(

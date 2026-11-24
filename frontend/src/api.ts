@@ -48,7 +48,9 @@ async function readDetail(response: Response): Promise<string> {
   return response.statusText || 'Request failed'
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+// Sends a request with the x-user-id header and throws ApiError unless the
+// response is OK. Shared by JSON requests and file downloads.
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const userId = localStorage.getItem(USER_ID_KEY)
   if (!userId) {
     throw new Error('No user id set. Enter one in the top bar.')
@@ -64,10 +66,32 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     throw new ApiError(response.status, await readDetail(response))
   }
+  return response
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await send(path, init)
   if (response.status === 204) {
     return undefined as T
   }
   return (await response.json()) as T
+}
+
+// The file name from a Content-Disposition header. Prefers the RFC 5987
+// filename*=UTF-8''... form, then filename="...". Null if neither is there.
+export function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null
+  const encoded = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header)
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1].trim())
+    } catch {
+      // Malformed encoding; fall back to the plain form.
+    }
+  }
+  const plain = /filename\s*=\s*"([^"]*)"|filename\s*=\s*([^;]+)/i.exec(header)
+  const name = (plain?.[1] ?? plain?.[2])?.trim()
+  return name || null
 }
 
 function post<T>(path: string, body?: unknown): Promise<T> {
@@ -168,6 +192,34 @@ export function createEvent(
   event: BikeEventCreate,
 ): Promise<BikeEvent> {
   return post(`/bikes/${bikeId}/events`, event)
+}
+
+export interface FileDownload {
+  blob: Blob
+  filename: string
+}
+
+/** GET /bikes/{id}/service-history.pdf. from and to are optional
+ * "YYYY-MM-DD" dates, both inclusive. Fetched (not a plain link) so the
+ * x-user-id header is sent. */
+export async function downloadServiceHistory(
+  bikeId: number,
+  from?: string,
+  to?: string,
+): Promise<FileDownload> {
+  const params = new URLSearchParams()
+  if (from) params.set('from', from)
+  if (to) params.set('to', to)
+  const query = params.toString()
+  const response = await send(
+    `/bikes/${bikeId}/service-history.pdf${query ? `?${query}` : ''}`,
+  )
+  return {
+    blob: await response.blob(),
+    filename:
+      filenameFromDisposition(response.headers.get('Content-Disposition')) ??
+      `service-history-${bikeId}.pdf`,
+  }
 }
 
 /** The user's pending reminders across all bikes, soonest first. */

@@ -128,6 +128,10 @@ export interface BikeEvent {
   occurred_at: string
   odometer_km: string | null
   payload: Record<string, unknown> | null
+  /** Decimal as a string, e.g. "45.50"; null means "not recorded". */
+  cost: string | null
+  /** Up to 500 characters; null means "not recorded". */
+  parts: string | null
   created_at: string
 }
 
@@ -138,6 +142,10 @@ export interface BikeEventCreate {
   component_id?: number | null
   odometer_km?: string | null
   payload?: Record<string, unknown> | null
+  /** 0 or more, at most 2 decimal places, sent as a string like odometer_km. */
+  cost?: string | null
+  /** Up to 500 characters. */
+  parts?: string | null
 }
 
 /** PATCH /events/{id}: omitted fields keep their value; null clears one. */
@@ -147,6 +155,8 @@ export interface BikeEventUpdate {
   occurred_at?: string
   odometer_km?: string | null
   payload?: Record<string, unknown> | null
+  cost?: string | null
+  parts?: string | null
 }
 
 export interface EventFilters {

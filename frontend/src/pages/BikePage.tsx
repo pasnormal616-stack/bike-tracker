@@ -6,6 +6,7 @@ import {
   completeReminder,
   createEvent,
   deleteEvent,
+  downloadServiceHistory,
   getBike,
   listComponents,
   listEvents,
@@ -165,6 +166,9 @@ export default function BikePage() {
         </button>
       )}
 
+      {/* Shown for archived bikes too: their history is still useful. */}
+      <ServiceHistorySection bikeId={bikeId} />
+
       <h2>Components</h2>
       {components.length === 0 ? (
         <p>No active components.</p>
@@ -245,6 +249,68 @@ export default function BikePage() {
         version={eventsVersion}
       />
     </section>
+  )
+}
+
+// Saves a downloaded file through a temporary object URL. The blob was
+// fetched with the x-user-id header, so no plain link to the API is used.
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  // Revoked on the next tick, once the browser has started the download.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+function ServiceHistorySection({ bikeId }: { bikeId: number }) {
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [downloading, setDownloading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function download(e: FormEvent) {
+    e.preventDefault()
+    setDownloading(true)
+    setError(null)
+    try {
+      // Blank inputs are left out: no lower or upper bound.
+      const { blob, filename } = await downloadServiceHistory(
+        bikeId,
+        from || undefined,
+        to || undefined,
+      )
+      saveBlob(blob, filename)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <>
+      <h2>Service history</h2>
+      <form className="stacked" onSubmit={download}>
+        <label>
+          From (optional)
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <label>
+          To (optional)
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        {error && <p className="error">{error}</p>}
+        <div>
+          <button type="submit" disabled={downloading}>
+            {downloading ? 'Downloading…' : 'Download service history'}
+          </button>
+        </div>
+      </form>
+    </>
   )
 }
 
@@ -405,6 +471,48 @@ function EventsSection({
   )
 }
 
+// Cost and parts, shared by the add and edit event forms. Both are optional:
+// blank is sent as null, meaning "not recorded".
+function CostAndPartsFields({
+  cost,
+  parts,
+  onCost,
+  onParts,
+}: {
+  cost: string
+  parts: string
+  onCost: (value: string) => void
+  onParts: (value: string) => void
+}) {
+  return (
+    <>
+      <label>
+        Cost (optional)
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={cost}
+          onChange={(e) => onCost(e.target.value)}
+        />
+      </label>
+      <label>
+        Parts (optional)
+        <input value={parts} onChange={(e) => onParts(e.target.value)} maxLength={500} />
+      </label>
+    </>
+  )
+}
+
+// Cost goes as a string, like odometer_km, so no float rounding on the way.
+function costOrNull(cost: string): string | null {
+  return cost === '' ? null : cost
+}
+
+function partsOrNull(parts: string): string | null {
+  return parts.trim() || null
+}
+
 function EventEditForm({
   event,
   components,
@@ -429,6 +537,8 @@ function EventEditForm({
   const [wear, setWear] = useState(
     event.payload?.wear_percent === undefined ? '' : String(event.payload.wear_percent),
   )
+  const [cost, setCost] = useState(event.cost ?? '')
+  const [parts, setParts] = useState(event.parts ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -454,6 +564,8 @@ function EventEditForm({
       component_id: componentId === '' ? null : Number(componentId),
       odometer_km: odometer === '' ? null : odometer,
       payload: Object.keys(payload).length > 0 ? payload : null,
+      cost: costOrNull(cost),
+      parts: partsOrNull(parts),
     }
     // A datetime-local input has minute precision, so only send the time
     // when it was changed; otherwise the seconds would be lost.
@@ -529,6 +641,7 @@ function EventEditForm({
         Note
         <input value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
+      <CostAndPartsFields cost={cost} parts={parts} onCost={setCost} onParts={setParts} />
       {error && <p className="error">{error}</p>}
       <div>
         <button type="submit" disabled={saving}>
@@ -561,6 +674,8 @@ function AddEventForm({
   const [odometer, setOdometer] = useState('')
   const [wear, setWear] = useState('')
   const [note, setNote] = useState('')
+  const [cost, setCost] = useState('')
+  const [parts, setParts] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -579,12 +694,16 @@ function AddEventForm({
         component_id: componentId === '' ? null : Number(componentId),
         odometer_km: odometer === '' ? null : odometer,
         payload: Object.keys(payload).length > 0 ? payload : null,
+        cost: costOrNull(cost),
+        parts: partsOrNull(parts),
       })
       // Keep the type and component for the next entry; clear the rest.
       setWhen(nowLocalInput())
       setOdometer('')
       setWear('')
       setNote('')
+      setCost('')
+      setParts('')
       onAdded()
     } catch (err) {
       setError((err as Error).message)
@@ -653,6 +772,7 @@ function AddEventForm({
         Note
         <input value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
+      <CostAndPartsFields cost={cost} parts={parts} onCost={setCost} onParts={setParts} />
       {error && <p className="error">{error}</p>}
       <div>
         <button type="submit" disabled={saving}>

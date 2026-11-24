@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     func,
     text,
@@ -133,6 +134,10 @@ class Event(Base):
         CheckConstraint(
             "odometer_km IS NULL OR odometer_km >= 0", name="odometer_non_negative"
         ),
+        CheckConstraint("cost IS NULL OR cost >= 0", name="cost_non_negative"),
+        CheckConstraint(
+            "parts IS NULL OR char_length(parts) <= 500", name="parts_max_length"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -144,6 +149,9 @@ class Event(Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     odometer_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     payload: Mapped[dict | None] = mapped_column(JSON)
+    # Any event type. Null means "not recorded", not zero.
+    cost: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    parts: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

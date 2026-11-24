@@ -170,6 +170,9 @@ class EventCreate(BaseModel):
         default=None, ge=0, max_digits=10, decimal_places=2
     )
     payload: dict[str, Any] | None = None
+    # Any event type. Null means "not recorded", not zero.
+    cost: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
+    parts: str | None = Field(default=None, max_length=500)
 
     @model_validator(mode="after")
     def check_measurement(self) -> "EventCreate":
@@ -204,6 +207,8 @@ class EventUpdate(BaseModel):
         default=None, ge=0, max_digits=10, decimal_places=2
     )
     payload: dict[str, Any] | None = None
+    cost: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
+    parts: str | None = Field(default=None, max_length=500)
 
 
 class EventOut(BaseModel):
@@ -216,6 +221,8 @@ class EventOut(BaseModel):
     occurred_at: datetime
     odometer_km: Decimal | None
     payload: dict[str, Any] | None
+    cost: Decimal | None
+    parts: str | None
     created_at: datetime
 
 
