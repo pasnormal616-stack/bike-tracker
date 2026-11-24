@@ -24,7 +24,16 @@ from app.schemas import (
     WearOut,
     WearPoint,
 )
-from app.services.wear import WEAR_LIMIT_PERCENT, estimate_km_remaining
+from app.services.wear import (
+    WEAR_LIMIT_PERCENT,
+    average_km_per_day,
+    cassette_warning,
+    cassette_warning_percent,
+    chain_wear_limit,
+    component_distance_km,
+    estimate_chain_wear,
+    predict_replacement_date,
+)
 
 router = APIRouter(tags=["events"])
 
@@ -190,11 +199,30 @@ def get_component_wear(
         )
         for event in events
     ]
+    is_chain = component.type == "chain"
+    # A chain's limit comes from its speed count; other components fall back
+    # to 0.75.
+    limit = chain_wear_limit(component.speed_count) if is_chain else WEAR_LIMIT_PERCENT
+    # The readings above are display only: the estimate is from ride distance.
+    estimate = (
+        estimate_chain_wear(component, component_distance_km(db, component))
+        if is_chain
+        else None
+    )
+    estimated_wear = estimate.wear_percent if estimate else None
+    remaining = estimate.km_remaining if estimate else None
+    now = datetime.now(timezone.utc)
+    km_per_day = average_km_per_day(db, component.bike_id, now)
     return WearOut(
         component_id=component.id,
         points=points,
-        estimated_km_remaining=estimate_km_remaining(
-            [(p.odometer_km, p.wear_percent) for p in points]
+        estimated_wear_percent=estimated_wear,
+        estimated_km_remaining=remaining,
+        wear_limit_percent=limit,
+        cassette_warning=cassette_warning(component.type, estimated_wear, limit),
+        cassette_warning_percent=cassette_warning_percent(limit) if is_chain else None,
+        average_km_per_day=km_per_day,
+        predicted_replacement_date=predict_replacement_date(
+            remaining, km_per_day, now.date()
         ),
-        wear_limit_percent=WEAR_LIMIT_PERCENT,
     )

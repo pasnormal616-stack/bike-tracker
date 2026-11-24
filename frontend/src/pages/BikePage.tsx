@@ -13,6 +13,8 @@ import {
   snoozeReminder,
   updateEvent,
 } from '../api'
+import { CHAIN_DEFAULTS } from '../chain'
+import ChainFields from '../ChainFields'
 import type {
   Bike,
   BikeEvent,
@@ -20,6 +22,7 @@ import type {
   Component,
   EventType,
   Reminder,
+  SpeedCount,
 } from '../types'
 
 // A date input gives "YYYY-MM-DD"; store it as local midnight in ISO form,
@@ -56,6 +59,17 @@ export default function BikePage() {
   const [type, setType] = useState('')
   const [installedDate, setInstalledDate] = useState(today)
   const [odometer, setOdometer] = useState('0')
+  // Chain-only fields, shown and sent only when the type is exactly "chain".
+  const [speedCount, setSpeedCount] = useState<SpeedCount | ''>('')
+  const [lifespan, setLifespan] = useState('')
+  const isChain = type.trim() === 'chain'
+
+  function chooseSpeedCount(value: SpeedCount) {
+    // Prefill the lifespan the API would default to; it stays editable. The
+    // wear limit follows from the speed count and isn't sent.
+    setSpeedCount(value)
+    setLifespan(CHAIN_DEFAULTS[value].lifespanKm)
+  }
 
   useEffect(() => {
     let ignore = false
@@ -92,9 +106,15 @@ export default function BikePage() {
         type: type.trim(),
         installed_at: dateToIso(installedDate),
         installed_odometer_km: odometer,
+        ...(isChain && {
+          speed_count: speedCount === '' ? null : speedCount,
+          lifespan_km: lifespan || null,
+        }),
       })
       setType('')
       setOdometer('0')
+      setSpeedCount('')
+      setLifespan('')
       setReload((n) => n + 1)
     } catch (e) {
       setError((e as Error).message)
@@ -197,6 +217,22 @@ export default function BikePage() {
                 required
               />
             </label>
+            {isChain && (
+              <>
+                <ChainFields speedCount={speedCount} onSpeedCount={chooseSpeedCount} />
+                <label>
+                  Lifespan (km)
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={lifespan}
+                    onChange={(e) => setLifespan(e.target.value)}
+                    required
+                  />
+                </label>
+              </>
+            )}
             <button type="submit">Add component</button>
           </form>
         </>

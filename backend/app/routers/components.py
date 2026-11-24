@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -11,8 +11,9 @@ from app.auth import (
     get_own_component,
 )
 from app.db import get_db
-from app.models import Component, Ride, User
+from app.models import Component, User
 from app.schemas import (
+    CHAIN_ONLY_FIELDS_ERROR,
     ComponentCreate,
     ComponentOut,
     ComponentReplace,
@@ -20,6 +21,7 @@ from app.schemas import (
     ComponentUpdate,
     MileageOut,
 )
+from app.services.wear import CHAIN_DEFAULTS, component_distance_km
 
 router = APIRouter(tags=["components"])
 
@@ -78,7 +80,19 @@ def update_component(
     user: User = Depends(get_current_user),
 ) -> Component:
     component = get_own_component(db, user, component_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    changes = body.model_dump(exclude_unset=True)
+    if component.type != "chain":
+        # Sending null is allowed: it's already null on a non-chain.
+        if changes.get("speed_count") is not None:
+            raise HTTPException(status_code=422, detail=CHAIN_ONLY_FIELDS_ERROR)
+    elif changes.get("speed_count") is not None:
+        # The limit follows the speed count automatically (it's derived). A new
+        # speed count fills lifespan_km only if it's still empty and isn't in
+        # this request; it never overwrites one already set.
+        lifespan = CHAIN_DEFAULTS[changes["speed_count"]][1]
+        if "lifespan_km" not in changes and component.lifespan_km is None:
+            changes["lifespan_km"] = lifespan
+    for field, value in changes.items():
         setattr(component, field, value)
     db.commit()
     db.refresh(component)
@@ -160,14 +174,6 @@ def get_component_mileage(
     user: User = Depends(get_current_user),
 ) -> MileageOut:
     component = get_own_component(db, user, component_id)
-    conditions = [
-        Ride.bike_id == component.bike_id,
-        Ride.deleted_at.is_(None),
-        Ride.started_at >= component.installed_at,
-    ]
-    if component.retired_at is not None:
-        conditions.append(Ride.started_at < component.retired_at)
-    distance = db.scalar(
-        select(func.coalesce(func.sum(Ride.distance_km), 0)).where(*conditions)
+    return MileageOut(
+        component_id=component.id, distance_km=component_distance_km(db, component)
     )
-    return MileageOut(component_id=component.id, distance_km=distance)

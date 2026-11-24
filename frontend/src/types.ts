@@ -34,7 +34,12 @@ export interface Component extends ComponentIntervals {
   retired_at: string | null
   /** Set only by POST /components/{id}/replace. */
   retired_odometer_km: string | null
+  /** Chains only. 10 = "10 or fewer speeds", 11 = "11 or more". The wear
+   * limit is derived from it by the API (see Wear.wear_limit_percent). */
+  speed_count: SpeedCount | null
 }
+
+export type SpeedCount = 10 | 11
 
 export interface ComponentCreate extends Partial<ComponentIntervals> {
   type: string
@@ -43,6 +48,10 @@ export interface ComponentCreate extends Partial<ComponentIntervals> {
   brand?: string | null
   model?: string | null
   lifespan_km?: string | null
+  /** Chains only; the API rejects it on other types. With lifespan_km left
+   * out, the API fills it from speed_count. The wear limit can't be sent: the
+   * API derives it from speed_count and rejects wear_limit_percent. */
+  speed_count?: SpeedCount | null
 }
 
 export interface ComponentReplace {
@@ -66,11 +75,26 @@ export interface WearPoint {
   wear_percent: string
 }
 
+/** Readings (points) are display only. The estimate fields come from ride
+ * distance, and are set only for a chain with speed count, lifespan and limit. */
 export interface Wear {
   component_id: number
   points: WearPoint[]
+  /** limit × (km ridden ÷ lifespan), capped at the limit. */
+  estimated_wear_percent: string | null
+  /** lifespan − km ridden, floored at 0. */
   estimated_km_remaining: string | null
-  wear_limit_percent: string
+  /** A chain's limit, derived from its speed count (null without one);
+   * "0.75" for other components. */
+  wear_limit_percent: string | null
+  /** True only for a chain whose estimated wear is at or above cassette_warning_percent. */
+  cassette_warning: boolean
+  /** Half a chain's limit; null for other components or with no limit. */
+  cassette_warning_percent: string | null
+  /** Over the bike's rides in the last 90 days; null when there are none. */
+  average_km_per_day: string | null
+  /** "YYYY-MM-DD" (UTC); null when there isn't enough data. */
+  predicted_replacement_date: string | null
 }
 
 export type ComponentStatus = 'overdue' | 'due_soon' | 'good' | 'no_lifespan'

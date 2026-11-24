@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.services.health import BikeStatus, ComponentStatus
+from app.services.wear import CHAIN_DEFAULTS
 
 # Postgres INTEGER upper bound, so a huge value is a 422, not a database error.
 MAX_INT = 2_147_483_647
@@ -53,7 +54,33 @@ class ComponentIntervals(BaseModel):
     # POST /components/{id}/replace (from old_final_odometer_km).
 
 
-class ComponentCreate(ComponentIntervals):
+CHAIN_ONLY_FIELDS_ERROR = "speed_count is only for chains"
+WEAR_LIMIT_NOT_SETTABLE_ERROR = (
+    "wear_limit_percent can't be set: it comes from speed_count"
+)
+
+
+class ChainWearFields(BaseModel):
+    """speed_count is for chains only; setting it on another type is a 422.
+
+    The wear limit is derived from speed_count (chain_wear_limit), so it isn't
+    a field here. Unknown fields are normally ignored, so a request that still
+    sends wear_limit_percent is rejected explicitly rather than silently
+    dropped.
+    """
+
+    # 10 means "10 or fewer speeds", 11 means "11 or more".
+    speed_count: Literal[10, 11] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_wear_limit(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "wear_limit_percent" in data:
+            raise ValueError(WEAR_LIMIT_NOT_SETTABLE_ERROR)
+        return data
+
+
+class ComponentCreate(ComponentIntervals, ChainWearFields):
     type: str = Field(min_length=1, max_length=50)
     brand: str | None = Field(default=None, max_length=100)
     model: str | None = Field(default=None, max_length=100)
@@ -61,8 +88,23 @@ class ComponentCreate(ComponentIntervals):
     installed_odometer_km: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     lifespan_km: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
 
+    @model_validator(mode="after")
+    def apply_chain_defaults(self) -> "ComponentCreate":
+        # Also runs for the new part in POST /components/{id}/replace.
+        if self.type != "chain":
+            if self.speed_count is not None:
+                raise ValueError(CHAIN_ONLY_FIELDS_ERROR)
+            return self
+        if self.speed_count is not None and self.lifespan_km is None:
+            # Omitted or null means "use the default"; a value sent is kept.
+            self.lifespan_km = CHAIN_DEFAULTS[self.speed_count][1]
+        return self
 
-class ComponentUpdate(ComponentIntervals):
+
+class ComponentUpdate(ComponentIntervals, ChainWearFields):
+    """The chain-only check and the lifespan default need the stored type, so
+    they're in the PATCH route, not here."""
+
     brand: str | None = Field(default=None, max_length=100)
     model: str | None = Field(default=None, max_length=100)
     lifespan_km: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
@@ -83,6 +125,7 @@ class ComponentOut(BaseModel):
     refill_interval_days: int | None
     check_interval_km: Decimal | None
     retired_odometer_km: Decimal | None
+    speed_count: int | None
 
 
 class ComponentReplace(BaseModel):
@@ -183,10 +226,29 @@ class WearPoint(BaseModel):
 
 
 class WearOut(BaseModel):
+    """Manual readings (points) are display only. The estimate fields come
+    from ride distance and are set only for a chain with speed_count and
+    lifespan_km set."""
+
     component_id: int
     points: list[WearPoint]
+    # limit x (km ridden / lifespan_km), capped at the limit.
+    estimated_wear_percent: Decimal | None
+    # lifespan_km - km ridden, floored at 0.
     estimated_km_remaining: Decimal | None
-    wear_limit_percent: Decimal = Decimal("0.75")
+    # A chain's limit, derived from speed_count (null without one); 0.75 for
+    # other components.
+    wear_limit_percent: Decimal | None
+    # True only for a chain whose estimated wear is at or above
+    # cassette_warning_percent.
+    cassette_warning: bool
+    # Half of a chain's limit; null for other components or with no limit.
+    cassette_warning_percent: Decimal | None
+    # Over the bike's rides in the last 90 days; null when there are none.
+    average_km_per_day: Decimal | None
+    # UTC date; null when the estimate or the average is missing, or the
+    # average is 0.
+    predicted_replacement_date: date | None
 
 
 class ComponentHealthOut(BaseModel):

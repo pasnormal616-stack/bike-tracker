@@ -197,12 +197,13 @@ def test_list_with_invalid_type_filter_returns_422(client, alice_id):
     assert response.status_code == 422
 
 
-def test_wear_estimate_from_two_points(client, alice_id):
+def test_wear_points_are_listed_by_date_and_do_not_give_an_estimate(client, alice_id):
     bike = create_bike(client, alice_id)
     component = create_component(client, alice_id, bike["id"])
+    # Entered out of order; returned oldest first.
     for odometer, wear, when in [
-        ("1000.00", 0.2, "2026-02-01T08:00:00Z"),
         ("2000.00", 0.4, "2026-03-01T08:00:00Z"),
+        ("1000.00", 0.2, "2026-02-01T08:00:00Z"),
     ]:
         response = post_event(
             client, alice_id, bike["id"], measurement(component["id"], odometer, wear, when)
@@ -211,43 +212,14 @@ def test_wear_estimate_from_two_points(client, alice_id):
 
     wear = get_wear(client, alice_id, component["id"])
 
-    # slope = 0.2 / 1000 = 0.0002 per km; intercept = 0; 0.75 is reached at
-    # 3750 km; 3750 - 2000 (latest odometer) = 1750.
+    # Readings are display only since Step 11b; the estimate comes from ride
+    # distance (see test_chain_wear.py), and this chain has no speed count.
     assert wear["component_id"] == component["id"]
     assert [Decimal(p["odometer_km"]) for p in wear["points"]] == [
         Decimal("1000.00"),
         Decimal("2000.00"),
     ]
-    assert Decimal(wear["estimated_km_remaining"]) == Decimal("1750.00")
-    assert Decimal(wear["wear_limit_percent"]) == Decimal("0.75")
-
-
-def test_wear_estimate_is_null_with_one_measurement(client, alice_id):
-    bike = create_bike(client, alice_id)
-    component = create_component(client, alice_id, bike["id"])
-    post_event(client, alice_id, bike["id"], measurement(component["id"], "1000.00", 0.2))
-
-    wear = get_wear(client, alice_id, component["id"])
-
-    assert len(wear["points"]) == 1
-    assert wear["estimated_km_remaining"] is None
-
-
-def test_wear_estimate_is_null_with_same_odometer(client, alice_id):
-    bike = create_bike(client, alice_id)
-    component = create_component(client, alice_id, bike["id"])
-    for wear_value, when in [(0.2, "2026-02-01T08:00:00Z"), (0.3, "2026-02-02T08:00:00Z")]:
-        response = post_event(
-            client,
-            alice_id,
-            bike["id"],
-            measurement(component["id"], "1000.00", wear_value, when),
-        )
-        assert response.status_code == 201
-
-    wear = get_wear(client, alice_id, component["id"])
-
-    assert len(wear["points"]) == 2
+    assert wear["estimated_wear_percent"] is None
     assert wear["estimated_km_remaining"] is None
 
 

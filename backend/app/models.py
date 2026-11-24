@@ -76,6 +76,10 @@ class Component(Base):
             "retired_odometer_km IS NULL OR retired_odometer_km >= 0",
             name="retired_odometer_km_non_negative",
         ),
+        CheckConstraint(
+            "speed_count IS NULL OR speed_count IN (10, 11)",
+            name="speed_count_valid",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -91,6 +95,9 @@ class Component(Base):
     refill_interval_days: Mapped[int | None] = mapped_column(Integer)
     check_interval_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     retired_odometer_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    # Chains only. 10 means "10 or fewer speeds", 11 means "11 or more". The
+    # chain's wear limit is derived from it (services.wear.chain_wear_limit).
+    speed_count: Mapped[int | None] = mapped_column(Integer)
 
     bike: Mapped[Bike] = relationship(back_populates="components")
 
